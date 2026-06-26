@@ -1,4 +1,18 @@
 import streamlit as st
+import pandas as pd
+import joblib
+import numpy as np
+
+model = joblib.load("balanced_svm_model.pkl")
+scaler = joblib.load("scaler.pkl")
+df = pd.read_csv("labelled data.csv")
+
+# Prepare features and labels
+X = df.drop(['subject', 'sessionIndex', 'rep', 'Label'], axis=1)
+y = df['Label']
+X_scaled = scaler.transform(X)
+predictions = model.predict(X_scaled)
+st.write(predictions[:10])
 
 # ------------------ Page Configuration ------------------
 st.set_page_config(
