@@ -1,12 +1,9 @@
 import streamlit as st
 import pandas as pd
-import joblib
 import numpy as np
+import joblib
 
-from sklearn.metrics import (
-    accuracy_score,
-    confusion_matrix
-)
+from sklearn.metrics import accuracy_score, confusion_matrix
 
 # ---------------- Page Configuration ----------------
 
@@ -25,17 +22,14 @@ df = pd.read_csv("labelled data.csv")
 
 # ---------------- Prepare Data ----------------
 
-X = df.drop(["subject","sessionIndex","rep","Label"], axis=1)
+X = df.drop(["subject", "sessionIndex", "rep", "Label"], axis=1)
 y = df["Label"]
 
 X_scaled = scaler.transform(X)
 
-# ---------------- Predictions ----------------
+# ---------------- Overall Model Performance ----------------
 
 predictions = model.predict(X_scaled)
-probabilities = model.predict_proba(X_scaled)
-
-# ---------------- Performance Metrics ----------------
 
 accuracy = accuracy_score(y, predictions)
 
@@ -46,85 +40,76 @@ frr = (fn / (fn + tp)) * 100
 
 # ---------------- Sidebar ----------------
 
-st.sidebar.header("User Selection")
+st.sidebar.title("User Selection")
 
 sample = st.sidebar.slider(
-    "Choose Sample",
-    0,
-    len(df)-1,
-    0
+    "Select Sample",
+    min_value=0,
+    max_value=len(df) - 1,
+    value=0
 )
 
-sample_data = X_scaled[sample].reshape(1,-1)
+sample_data = X_scaled[sample].reshape(1, -1)
 
 prediction = model.predict(sample_data)[0]
 
-confidence = np.max(model.predict_proba(sample_data))*100
+probability = model.predict_proba(sample_data)[0]
+confidence = np.max(probability) * 100
 
 actual = y.iloc[sample]
-
-risk = 100-confidence
-
 subject = df.iloc[sample]["subject"]
 
-# ---------------- Status ----------------
+# ---------------- Authentication Status ----------------
 
 if prediction == 1:
     status = "✅ Authenticated"
 else:
     status = "❌ Imposter"
 
-if risk < 30:
-    risk_status = "Low Risk"
-elif risk < 60:
-    risk_status = "Medium Risk"
+# ---------------- Risk Logic ----------------
+
+if prediction == 1:
+    risk = 100 - confidence
+
+    if risk < 30:
+        risk_status = "Low Risk"
+    elif risk < 60:
+        risk_status = "Medium Risk"
+    else:
+        risk_status = "High Risk"
+
 else:
-    risk_status = "High Risk"
+    risk = confidence
+    risk_status = "🚨 High Risk - Imposter Detected"
 
 # ---------------- Dashboard ----------------
 
 st.title("🛡️ Continuous Behavioral Authentication System")
-
 st.markdown("### AI Powered Continuous User Monitoring Dashboard")
 
 st.divider()
 
 # ---------------- Top Metrics ----------------
 
-c1,c2,c3,c4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-c1.metric(
-    "Accuracy",
-    f"{accuracy*100:.2f}%"
-)
-
-c2.metric(
-    "FAR",
-    f"{far:.2f}%"
-)
-
-c3.metric(
-    "FRR",
-    f"{frr:.2f}%"
-)
-
-c4.metric(
-    "Model Status",
-    "Active ✅"
-)
+c1.metric("Accuracy", f"{accuracy*100:.2f}%")
+c2.metric("FAR", f"{far:.2f}%")
+c3.metric("FRR", f"{frr:.2f}%")
+c4.metric("Model Status", "Active ✅")
 
 st.divider()
 
-# ---------------- User Session ----------------
+# ---------------- Live Session ----------------
 
-left,right = st.columns([2,1])
+left, right = st.columns([2, 1])
 
 with left:
 
-    st.subheader("Live User Session")
+    st.subheader("👤 Live User Session")
 
     st.info(f"""
-Current User : User_{subject}
+Current User : {subject}
 
 Authentication Status : {status}
 
@@ -137,21 +122,34 @@ Confidence Score : {confidence:.2f}%
 
 with right:
 
-    st.subheader("Risk Analysis")
+    st.subheader("⚠️ Risk Analysis")
 
-    st.metric(
-        "Risk Level",
-        f"{risk:.2f}%"
-    )
+    st.metric("Risk Level", f"{risk:.2f}%")
 
-    if risk < 30:
-        st.success(risk_status)
-    elif risk < 60:
-        st.warning(risk_status)
+    if prediction == 1:
+
+        if risk < 30:
+            st.success(risk_status)
+
+        elif risk < 60:
+            st.warning(risk_status)
+
+        else:
+            st.error(risk_status)
+
     else:
         st.error(risk_status)
 
 st.divider()
+
+# ---------------- Prediction Summary ----------------
+
+st.subheader("Prediction Summary")
+
+if prediction == actual:
+    st.success("Prediction matches the actual label.")
+else:
+    st.warning("Prediction does not match the actual label.")
 
 # ---------------- Selected Features ----------------
 
@@ -170,27 +168,29 @@ st.divider()
 
 st.subheader("Authentication Log")
 
-rows=[]
+log = []
 
-start=max(0,sample-5)
+start = max(0, sample - 5)
+end = min(len(df), sample + 1)
 
-end=min(len(df),sample+1)
+for i in range(start, end):
 
-for i in range(start,end):
+    row = X_scaled[i].reshape(1, -1)
 
-    pred=model.predict(X_scaled[i].reshape(1,-1))[0]
+    pred = model.predict(row)[0]
 
-    conf=np.max(
-        model.predict_proba(
-            X_scaled[i].reshape(1,-1)
-        )
-    )*100
+    conf = np.max(model.predict_proba(row)) * 100
 
-    rows.append({
-        "Sample":i,
-        "User":df.iloc[i]["subject"],
-        "Prediction":"Authenticated" if pred==1 else "Imposter",
-        "Confidence":f"{conf:.2f}%"
+    if pred == 1:
+        auth = "Authenticated"
+    else:
+        auth = "Imposter"
+
+    log.append({
+        "Sample": i,
+        "User": df.iloc[i]["subject"],
+        "Prediction": auth,
+        "Confidence": f"{conf:.2f}%"
     })
 
-st.dataframe(pd.DataFrame(rows), use_container_width=True)
+st.dataframe(pd.DataFrame(log), use_container_width=True)
